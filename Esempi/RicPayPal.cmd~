@@ -1,0 +1,4 @@
+echo off
+t:
+cd /bin
+perl -w Paypal.pl -p -n >perl.log

@@ -1,0 +1,7 @@
+echo off
+t:
+cd /bin
+perl -w SimpDown.pl -u -m >T:\log\SimpDown.log
+pause
+gvim T:\log\SimpDown.log
+pause

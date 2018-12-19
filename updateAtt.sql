@@ -1,0 +1,1 @@
+UPDATE `l11ustn9_spalleponti`.`activations` SET `status`='00' WHERE `id`='1080';

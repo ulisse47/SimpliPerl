@@ -1,0 +1,16 @@
+
+Couldn't open file T:/Ricevute/Pagamenti//__EvlPP_2018_36.pdf, Permission denied
+
+The error occurred when executing:
+ at C:/Perl/site/lib/PDF/Reuse.pm line 301.
+	PDF::Reuse::prFile("__EvlPP_2018_36.pdf") called at Evaluation.pl line 295
+
+Situation when the error occurred
+
+   Bytes written to the current pdf-file,    pos    = undef
+   Object processed, not necessarily written objNr  = undef
+   Current pdf-file,                         utfil  = T:/Ricevute/Pagamenti//__EvlPP_2018_36.pdf
+   File logging the run,                     runfil = undef
+   Local time                                       = Fri Dec  7 17:00:35 2018
+
+

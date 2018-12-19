@@ -1,0 +1,16 @@
+
+Couldn't open file U:/Modelli/A4.pdf, Permission denied
+
+The error occurred when executing:
+ at F:/Perl/site/lib/PDF/Reuse.pm line 304.
+	PDF::Reuse::prFile("A4.pdf") called at pdf.pl line 5
+
+Situation when the error occurred
+
+   Bytes written to the current pdf-file,    pos    = undef
+   Object processed, not necessarily written objNr  = undef
+   Current pdf-file,                         utfil  = U:/Modelli/A4.pdf
+   File logging the run,                     runfil = undef
+   Local time                                       = Fri Nov 10 00:33:03 2017
+
+

@@ -1,0 +1,186 @@
+#!perl -w PayPal.pl
+#PayPal.pl
+#
+#	Legge la posta della cartella 'outlook' per cercare le ricevute PayPal
+#	
+#	
+#
+
+use DBI;
+use File::Copy;
+use strict;
+use Win32::OLE;
+use Win32::OLE::Variant;
+use Win32::OLE::Const 'Microsoft Outlook';
+
+	my $Outlook	= Win32::OLE->new('Outlook.Application');
+	my $ol		= Win32::OLE::Const->Load($Outlook);
+        Win32::OLE->Option( Warn => 1); 			#Ignora gli errori
+	my $namespace	= $Outlook->GetNamespace("MAPI");
+	my $Folder	= $namespace->GetDefaultFolder(olFolderInbox);
+	my $msg		= $Folder->Items;
+	my $count	= $msg->Count;
+ 
+	my ($ind, $work, $err, $cpmsg);
+	my ($sender, $attach, $subject, $body, $date, $path, $pathsped ) ;
+	my ($CodTran, $DataOp, $Mese, $Prod, $Addr, $User, $Ric);
+	my ($Ndoc, $Code, $Email);
+	
+     # Calcolo data
+     my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
+	$mon	=$mon + 1;
+	$mday	=$mday;
+	$year	=$year + 1900;
+	my $data= $year . substr("00" . $mon,-2 ) .  substr("00" . $mday,-2 );
+
+	my $GG	= join('/',$mday,$mon,$year);
+	my $HH	= join(':',$hour,$min,$sec) ;
+
+	$path		= "" ;
+	my %mesi = ("gen","01","feb","02","mar","03","apr","04","mag","05","giu","06","lug","07","ago","08","set","09","ott","10","nov","11","dic","12");
+	#printf( "%s\n", $mesi{"ott"});
+	
+     #
+     # Prepara tabella Pagamenti
+     #
+     my $DSN = "dbi:ODBC:CCP";
+     my $dbh = DBI->connect($DSN, '', '') or die "$DBI::errstr\n";
+     my $sth1= $dbh->prepare(" 
+		SELECT 	max([Pagamenti].NR) 
+		FROM [Pagamenti]
+		GROUP BY [Pagamenti].Tipo; " 
+	) or die "$DBI::errstr\n";  
+
+     my $sth2= $dbh->prepare(" 
+		INSERT INTO Pagamenti (Data, Email, RagioneSociale, NR, Transazione, Ricevuta, Prodotto, Codice) 
+		VALUES (?,?,?,?,?,?,?,?)
+		") or die "$DBI::errstr\n";
+
+     my $sth3= $dbh->prepare(" 
+		SELECT 	[CodeFree].code
+		FROM [CodeFree]
+		") or die "$DBI::errstr\n";   
+
+     my $sth4= $dbh->prepare(" 
+		UPDATE  Attivazioni 
+		SET  [Attivazioni].status = '01',  [Attivazioni].address = ?
+		WHERE  [Attivazioni].code = ?
+		") or die "$DBI::errstr\n";
+     #
+     # Elabora tutti i messaggi in Posta in arrivo 
+     #
+
+     print "*** $count $GG \n";
+     #exit;
+
+     open(LISTA,">" . $path . "PayPal.log");
+     print LISTA "Elaborazione Email del $GG ore $HH\n *** $count Messaggi \n";
+	
+
+	EMAIL: for ($ind = $count; $ind > 0; $ind--) {
+
+		$DataOp = $CodTran = $Mese = $Prod = $Addr = $User = $Ric = $Code = "";
+
+                $subject	= $msg->Item($ind)->Subject;
+                $sender		= $msg->Item($ind)->SenderName;
+                $body		= $msg->Item($ind)->Body;
+                $date		= $msg->Item($ind)->SentOn;
+		$attach		= $msg->Item($ind)->Attachments;
+
+
+		printf( LISTA "\n-1-sender:	%s\n", $sender );
+
+		if ( $sender =~ /(.+) tramite PayPal/) {   # parse 
+				$User	= $1;
+				#printf ( "Nome: %s %s" , split(" ", $User));
+    			}
+
+		printf( LISTA "-2-subject:	%s\n", $subject );
+		if (	$subject =~ /Pagamento ricevuto da (.+)$/ ) {
+				$Addr	= $1;
+			}
+
+			#		
+			#Elabora il messaggio e rileva i dati 
+			#
+			
+		my @lines = split('\n',$body);
+		for my $line ( @lines ) {
+			
+			chop $line;
+			#printf( "+ + +>%s\n", $line);
+
+			if ( $line =~ /(..?) (...) (....) .* Codice transazione: (.................)/) {   # parse 
+				$DataOp		= join("/",$1,$mesi{$2},$3);
+				$CodTran	= $4;
+				next;
+			}
+			if ( $line =~ /Oggetto n. (\d+)/) {   # parse 
+				$Prod	= $1;
+				next;
+    			}
+			if ( $line =~ /Ricevuta n°: ([\d-]+)/) {   # parse 
+				$Ric	= $1;
+				next;
+    			}		
+			if ( $line =~ /hai ricevuto un pagamento di .50,00 USD da (.*)\. \((.*)\)/) {   # parse 
+				$Addr	= $2;
+				next;
+    			}
+
+			
+		}
+		#
+		# Fine elaborazione messaggio - Lettura ultimo numero ricevuta
+		#
+		my $rf1	= $sth1->execute;   
+		if ( $rf1) { 
+				my $rv1 = $sth1->bind_columns(\$Ndoc);
+				if ( $rf1= $sth1->fetch ) {
+					if (defined $Ndoc ) { 
+						printf( LISTA "Ultimo numero ricevuta:%s\n", $Ndoc+1);
+					}
+				} else {
+					die "$DBI::errstr\n - Errore su Pagamenti"; 
+				}
+		} 
+		else {
+			die "$DBI::errstr\n - Errore su Pagamenti";
+		}
+		#
+		# Ricerca Codice di attivazione
+		#
+		$sth3->execute or die "Esecuzione fallita " . $DBI::errstr . "\n";    
+		$sth3->bind_columns(\$Code) or die $DBI::errstr;
+		if ($sth3->fetch) {
+			        printf( LISTA "Codice attivazione libero:%s\n", $Code);
+		} else
+			{	printf( LISTA "\nCodici di attivazione esauriti\n");
+				die "Codici di attivazione esauriti" . "\n";	 }
+
+		
+		$sth4->execute(  $Addr, $Code ) or die "Errore in aggiornamento Attivazioni" . $DBI::errstr . "\n";
+
+		#printf( LISTA "Ndoc =%s\n",$Ndoc+1);		
+		printf( LISTA "+Codice:(%s)\n+DataOp:(%s)\n+Prodotto:(%s)\n+User:(%s)\n+Email:(%s)\n+Ricevuta:(%s)\n\n", $CodTran, $DataOp, $Prod, $User, $Addr, $Ric);
+
+		#
+		# Aggiornamento Pagamenti
+		#
+		$sth2->execute( $DataOp, $Addr, $User,  $Ndoc+1, $CodTran, $Ric, $Prod, $Code ) or die "Errore su aggiornamento Pagamenti" . $DBI::errstr ."\n";
+
+
+#		   $body		= "-- Messaggio elaborato automaticamente da Unione Servizi --\n\n" . $body;
+#		my $ItNew		= $Outlook->CreateItem(olMailItem);
+#		   $ItNew->{Subject}	= $subject;
+#		   $ItNew->{Body}	= $body;
+#		   #$Email		= "ufficio.telematico\@unioneartigiani.it";
+#	 	my $work		= $ItNew->Recipients->Add($Email);
+#		   if ( $Email  ne "Nessuno" ){	
+#			   $work  = $ItNew->Send;
+#			   $cpmsg = $msg->Item($ind)->Move($Spediti);#Sposta il messaggio nella cartella di servizio
+#		   }
+		#printf( LISTA "\n\n+++ %s\n\n\n",$subject);
+		} 
+
+    	close(LISTA);
